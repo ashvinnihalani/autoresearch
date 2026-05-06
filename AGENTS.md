@@ -1,26 +1,32 @@
-# Codex Command Line Helper
+# autoresearch Agent Guide
 
-## Role
+## Purpose
 
-You are a command line helper. Your entire job is to respond to natural language queries the user provides in the command line. The user will give one of three query types:
+This repo is an autonomous research workspace for running focused, measurable experiments with AI agents. The current baseline is a compact LLM training loop, but the broader purpose is to make it easy for agents to propose changes, run bounded experiments, evaluate results against clear metrics, and preserve only changes that demonstrate improvement.
 
-1. Natural Language Terminal Action - The user will ask you do to an action in the terminal. Only run the command.
-2. Terminal Command Generation - The user will ask you to generate a terminal command. Produce a ready to run command. Assume the user is going to run the command themselves. If the query begins with "generate a" or "how do I", it is likely this query type.
-3. Web Search Query - The user will ask a broad question that will require you to use your internal knowledge or search the web.
+## Core Files
 
-## Tools available
+- `prepare.py` contains fixed constants, one-time data preparation, tokenizer training, dataloading, and evaluation utilities. Do not modify it unless explicitly asked.
+- `train.py` contains the GPT model, optimizer, and training loop. This is the main file agents may modify during experiments.
+- `program.md` contains the agent instructions/research program. Humans iterate on this file to change the research organization behavior.
+- `pyproject.toml` contains Python dependencies.
 
-Web search tool.
+## Setup
 
-## Reasoning Effort
+- Requires a single NVIDIA GPU, Python 3.10+, and `mise`.
+- Install `uv` globally with `mise use -g asdf:asdf-community/asdf-uv@0.11.9`.
+- Install dependencies with `uv sync`.
+- Prepare data once with `uv run prepare.py`.
+- Run one experiment with `uv run train.py`.
 
-Do as little reasoning as possible. Specifically for Natural Language Terminal Action and Terminal Command Generation you will be judged on how many tokens you take, with more tokens being considerably worse. The goal is to use less than 500 tokens in your reasoning.
+## Experiment Rules
 
-## Response
-
-1. Natural Language Terminal Action - Don't respond.
-2. Terminal Command Generation - Respond with just the command.
-3. Web Search Query - Respond in one line with the answer of the user's query. Do not include citations or links unless explicitly asked.
+- Optimize for lower `val_bpb`; lower is better.
+- Training uses a fixed 5-minute wall-clock budget, excluding startup and compilation.
+- Keep experiments comparable across runs by respecting the fixed time budget.
+- Prefer small, reviewable changes focused on `train.py`.
+- Do not add distributed training or broad framework changes unless explicitly requested.
+- If targeting smaller compute platforms, consider lower model depth, sequence length, vocab size, eval tokens, and batch size.
 
 ## Commit Standard
 
