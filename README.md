@@ -20,12 +20,12 @@ If you are new to neural networks, this ["Dummy's Guide"](https://x.com/hooeem/s
 
 ## Quick start
 
-**Requirements:** A single NVIDIA GPU (tested on H100), Python 3.10+, [uv](https://docs.astral.sh/uv/).
+**Requirements:** A single NVIDIA GPU (tested on H100), Python 3.10+, [mise](https://mise.jdx.dev/).
 
 ```bash
 
-# 1. Install uv project manager (if you don't already have it)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# 1. Install uv project manager globally with mise
+mise use -g asdf:asdf-community/asdf-uv@0.11.9
 
 # 2. Install dependencies
 uv sync
