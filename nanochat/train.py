@@ -477,9 +477,9 @@ DEVICE_BATCH_SIZE = 128  # per-device batch size (reduce if OOM)
 
 
 def init_wandb(config, param_counts, num_flops_per_token, grad_accum_steps, tokens_per_fwdbwd, vocab_size):
-    wandb_key = os.environ.get("WANDB_KEY")
-    if not wandb_key:
-        print("WANDB_KEY not set; WandB logging disabled.")
+    wandb_api_key = os.environ.get("WANDB_API_KEY")
+    if not wandb_api_key:
+        print("WANDB_API_KEY not set; W&B logging disabled.")
         return None
 
     wandb_config = {
@@ -509,8 +509,8 @@ def init_wandb(config, param_counts, num_flops_per_token, grad_accum_steps, toke
         "cuda_device": torch.cuda.get_device_name(),
     }
     try:
-        os.environ.setdefault("WANDB_API_KEY", wandb_key)
-        wandb.login(key=wandb_key)
+        os.environ.setdefault("WANDB_API_KEY", wandb_api_key)
+        wandb.login(key=wandb_api_key)
         run = wandb.init(project=EXPERIMENT_NAME, name=EXPERIMENT_NAME, config=wandb_config)
         wandb.define_metric("step")
         wandb.define_metric("*", step_metric="step")
