@@ -48,6 +48,7 @@ Use this convention:
 - Image tag: `autoresearch-<experiment>:local`
 - Working directory inside the container: `/workspace`
 - Bind mount: experiment folder mounted to `/workspace`
+- Instance storage: if `/tmp/instance_storage` exists on the host, mount it at `/tmp/instance_storage` in the container.
 - GPU access: required via `--gpus all`
 - Required labels:
   - `autoresearch.experiment=<experiment>`
@@ -63,12 +64,18 @@ If no matching container is running, build the experiment image if needed and st
 
 ```bash
 docker build -t autoresearch-<experiment>:local .
+INSTANCE_STORAGE_ARGS=()
+if [ -d /tmp/instance_storage ]; then
+  INSTANCE_STORAGE_ARGS=(-v /tmp/instance_storage:/tmp/instance_storage)
+fi
+
 docker run -dit \
   --name autoresearch-<experiment>-dev \
   --label autoresearch.experiment=<experiment> \
   --label autoresearch.role=dev \
   --gpus all \
   -v "$PWD":/workspace \
+  "${INSTANCE_STORAGE_ARGS[@]}" \
   -w /workspace \
   autoresearch-<experiment>:local \
   bash
