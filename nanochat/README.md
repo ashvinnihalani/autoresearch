@@ -35,9 +35,14 @@ uv sync
 # 4. Download data and train tokenizer (one-time, ~2 min)
 uv run prepare.py
 
-# 5. Manually run a single training experiment (~5 min)
+# 5. Enable W&B logging by exporting your host key (optional)
+export WANDB_KEY=...
+
+# 6. Manually run a single training experiment (~5 min)
 uv run train.py
 ```
+
+When `WANDB_KEY` is set, `train.py` logs to a W&B project named from the experiment folder.
 
 If the above commands all work ok, your setup is working and you can go into autonomous research mode.
 
@@ -48,13 +53,24 @@ This experiment includes its own Dockerfile so dependencies are isolated at the 
 ```bash
 cd nanochat
 docker build -t autoresearch-nanochat:local .
-docker run --rm --gpus all autoresearch-nanochat:local
+docker run --rm --gpus all \
+  -e WANDB_KEY \
+  -v "$PWD":/workspace \
+  -w /workspace \
+  autoresearch-nanochat:local \
+  uv run train.py
 ```
+
+The `-e WANDB_KEY` flag forwards the host environment variable into the container for W&B auth.
 
 To run data preparation in the container:
 
 ```bash
-docker run --rm --gpus all autoresearch-nanochat:local uv run prepare.py
+docker run --rm --gpus all \
+  -v "$PWD":/workspace \
+  -w /workspace \
+  autoresearch-nanochat:local \
+  uv run prepare.py
 ```
 
 ## Running the agent

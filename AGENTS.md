@@ -38,6 +38,12 @@ Agent-only constraints that apply while editing an experiment:
 - Keep Docker changes scoped to the experiment folder.
 - Preserve the experiment's documented comparison metric and run budget unless the user explicitly asks to change them.
 
+## WandB MCP Server
+
+A WandB MCP server is available for inspecting experiment runs, metrics, artifacts, and comparisons. When the task involves WandB/W&B run state, logged metrics, dashboards, or experiment history, try to use the WandB MCP tools before relying on local logs or manual summaries.
+
+If the WandB MCP server is unavailable, inaccessible, unauthenticated, or returns a permissions error, warn the user clearly that WandB MCP access is not working and explain what could not be checked. Continue with local files, terminal output, or code inspection only when that still provides useful progress.
+
 ## Docker Dev Containers
 
 Each experiment should have at most one long-running dev container that agents reuse for commands and research runs. The container must be easy for a newly started agent to discover from Docker alone.

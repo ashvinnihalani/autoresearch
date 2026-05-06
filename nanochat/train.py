@@ -12,10 +12,12 @@ import gc
 import math
 import time
 from dataclasses import dataclass, asdict
+from pathlib import Path
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import wandb
 
 from kernels import get_kernel
 cap = torch.cuda.get_device_capability()
@@ -23,7 +25,30 @@ cap = torch.cuda.get_device_capability()
 repo = "varunneal/flash-attention-3" if cap == (9, 0) else "kernels-community/flash-attn3"
 fa3 = get_kernel(repo).flash_attn_interface
 
-from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb
+from prepare import EVAL_TOKENS, MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb
+
+
+def _experiment_name_from_mount(script_dir):
+    try:
+        mountinfo = Path("/proc/self/mountinfo").read_text()
+    except OSError:
+        return None
+    for line in mountinfo.splitlines():
+        fields = line.split(" - ", 1)[0].split()
+        if len(fields) >= 5 and fields[4] == str(script_dir):
+            mount_root = fields[3].replace("\\040", " ")
+            name = Path(mount_root).name
+            if name:
+                return name
+    return None
+
+
+def get_experiment_name():
+    script_dir = Path(__file__).resolve().parent
+    return _experiment_name_from_mount(script_dir) or script_dir.name
+
+
+EXPERIMENT_NAME = get_experiment_name()
 
 # ---------------------------------------------------------------------------
 # GPT Model
@@ -450,6 +475,66 @@ FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
 DEPTH = 8               # number of transformer layers
 DEVICE_BATCH_SIZE = 128  # per-device batch size (reduce if OOM)
 
+
+def init_wandb(config, param_counts, num_flops_per_token, grad_accum_steps, tokens_per_fwdbwd, vocab_size):
+    wandb_key = os.environ.get("WANDB_KEY")
+    if not wandb_key:
+        print("WANDB_KEY not set; WandB logging disabled.")
+        return None
+
+    wandb_config = {
+        "experiment_name": EXPERIMENT_NAME,
+        "model": asdict(config),
+        "param_counts": param_counts,
+        "vocab_size": vocab_size,
+        "max_seq_len": MAX_SEQ_LEN,
+        "eval_tokens": EVAL_TOKENS,
+        "time_budget_seconds": TIME_BUDGET,
+        "total_batch_size": TOTAL_BATCH_SIZE,
+        "device_batch_size": DEVICE_BATCH_SIZE,
+        "tokens_per_fwdbwd": tokens_per_fwdbwd,
+        "grad_accum_steps": grad_accum_steps,
+        "embedding_lr": EMBEDDING_LR,
+        "unembedding_lr": UNEMBEDDING_LR,
+        "matrix_lr": MATRIX_LR,
+        "scalar_lr": SCALAR_LR,
+        "weight_decay": WEIGHT_DECAY,
+        "adam_betas": list(ADAM_BETAS),
+        "warmup_ratio": WARMUP_RATIO,
+        "warmdown_ratio": WARMDOWN_RATIO,
+        "final_lr_frac": FINAL_LR_FRAC,
+        "num_flops_per_token": num_flops_per_token,
+        "h100_bf16_peak_flops": H100_BF16_PEAK_FLOPS,
+        "torch_version": torch.__version__,
+        "cuda_device": torch.cuda.get_device_name(),
+    }
+    try:
+        os.environ.setdefault("WANDB_API_KEY", wandb_key)
+        wandb.login(key=wandb_key)
+        run = wandb.init(project=EXPERIMENT_NAME, name=EXPERIMENT_NAME, config=wandb_config)
+        wandb.define_metric("step")
+        wandb.define_metric("*", step_metric="step")
+        return run
+    except Exception as exc:
+        print(f"WandB init failed; continuing without WandB: {exc}")
+        return None
+
+
+def optimizer_lr_metrics(optimizer):
+    metrics = {}
+    for kind in ("adamw", "muon"):
+        lrs = [group["lr"] for group in optimizer.param_groups if group["kind"] == kind]
+        if lrs:
+            metrics[f"optimizer/{kind}_lr_min"] = min(lrs)
+            metrics[f"optimizer/{kind}_lr_max"] = max(lrs)
+    return metrics
+
+
+def wandb_log(run, metrics, step):
+    if run is None:
+        return
+    wandb.log({"step": step, **metrics}, step=step)
+
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
 # ---------------------------------------------------------------------------
@@ -513,6 +598,9 @@ x, y, epoch = next(train_loader)  # prefetch first batch
 print(f"Time budget: {TIME_BUDGET}s")
 print(f"Gradient accumulation steps: {grad_accum_steps}")
 
+wandb_run = init_wandb(config, param_counts, num_flops_per_token, grad_accum_steps,
+                       tokens_per_fwdbwd, vocab_size)
+
 # Schedules (all based on progress = training_time / TIME_BUDGET)
 
 def get_lr_multiplier(progress):
@@ -569,6 +657,9 @@ while True:
     # Fast fail: abort if loss is exploding or NaN
     if math.isnan(train_loss_f) or train_loss_f > 100:
         print("FAIL")
+        wandb_log(wandb_run, {"status/failed": 1, "train/loss_raw": train_loss_f}, step)
+        if wandb_run is not None:
+            wandb_run.finish(exit_code=1)
         exit(1)
 
     torch.cuda.synchronize()
@@ -588,6 +679,23 @@ while True:
     remaining = max(0, TIME_BUDGET - total_training_time)
 
     print(f"\rstep {step:05d} ({pct_done:.1f}%) | loss: {debiased_smooth_loss:.6f} | lrm: {lrm:.2f} | dt: {dt*1000:.0f}ms | tok/sec: {tok_per_sec:,} | mfu: {mfu:.1f}% | epoch: {epoch} | remaining: {remaining:.0f}s    ", end="", flush=True)
+    wandb_log(wandb_run, {
+        "train/loss": debiased_smooth_loss,
+        "train/loss_raw": train_loss_f,
+        "train/lr_multiplier": lrm,
+        "train/muon_momentum": muon_momentum,
+        "train/muon_weight_decay": muon_weight_decay,
+        "progress/percent": pct_done,
+        "progress/training_seconds": total_training_time,
+        "progress/remaining_seconds": remaining,
+        "perf/step_time_ms": dt * 1000,
+        "perf/tokens_per_sec": tok_per_sec,
+        "perf/mfu_percent": mfu,
+        "tokens/total": (step + 1) * TOTAL_BATCH_SIZE,
+        "tokens/total_M": (step + 1) * TOTAL_BATCH_SIZE / 1e6,
+        "data/epoch": epoch,
+        **optimizer_lr_metrics(optimizer),
+    }, step)
 
     # GC management (Python's GC causes ~500ms stalls)
     if step == 0:
@@ -617,6 +725,25 @@ t_end = time.time()
 startup_time = t_start_training - t_start
 steady_state_mfu = 100 * num_flops_per_token * TOTAL_BATCH_SIZE * (step - 10) / total_training_time / H100_BF16_PEAK_FLOPS if total_training_time > 0 else 0
 peak_vram_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
+
+final_metrics = {
+    "val_bpb": val_bpb,
+    "startup_seconds": startup_time,
+    "training_seconds": total_training_time,
+    "total_seconds": t_end - t_start,
+    "peak_vram_mb": peak_vram_mb,
+    "mfu_percent": steady_state_mfu,
+    "total_tokens": total_tokens,
+    "total_tokens_M": total_tokens / 1e6,
+    "num_steps": step,
+    "num_params": num_params,
+    "num_params_M": num_params / 1e6,
+    "depth": DEPTH,
+}
+wandb_log(wandb_run, {f"final/{key}": value for key, value in final_metrics.items()}, step)
+if wandb_run is not None:
+    wandb_run.summary.update(final_metrics)
+    wandb_run.finish()
 
 print("---")
 print(f"val_bpb:          {val_bpb:.6f}")
