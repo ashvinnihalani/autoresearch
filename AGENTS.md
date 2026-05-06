@@ -104,3 +104,10 @@ docker exec -it autoresearch-<experiment>-dev uv run train.py
 Use the [Conventional Commits](https://www.conventionalcommits.org/) standard for all commit messages.
 
 Before generating a commit message, inspect the entire current git diff state and base the message on the actual file changes. Do not derive commit messages from the current conversation alone.
+
+When an AI attribution trailer is available and known for the agent that made the changes, include it in commit messages:
+
+- Codex: `Co-Authored-By: Codex <codex@openai.com>`
+- Claude Code: `Co-Authored-By: Claude <noreply@anthropic.com>`
+
+Do not hard-code an unrelated assistant identity or invent unknown attribution details.
