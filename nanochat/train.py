@@ -28,7 +28,7 @@ fa3 = get_kernel(repo).flash_attn_interface
 from prepare import EVAL_TOKENS, MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb
 
 
-def _experiment_name_from_mount(script_dir):
+def _workstream_name_from_mount(script_dir):
     try:
         mountinfo = Path("/proc/self/mountinfo").read_text()
     except OSError:
@@ -43,11 +43,51 @@ def _experiment_name_from_mount(script_dir):
     return None
 
 
-def get_experiment_name():
+def _name_from_path(path_value):
+    path_value = path_value.strip()
+    if not path_value:
+        return None
+    path = Path(path_value)
+    if path.name == "wandb" and path.parent.name:
+        return path.parent.name
+    return path.name or None
+
+
+def _env_name(env_var):
+    value = os.environ.get(env_var)
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
+
+
+def get_workstream_name():
     script_dir = Path(__file__).resolve().parent
-    return _experiment_name_from_mount(script_dir) or script_dir.name
+    return _workstream_name_from_mount(script_dir) or script_dir.name
 
 
+def get_experiment_name():
+    for env_var in ("WANDB_NAME", "WANDB_RUN_NAME", "RUN_TAG"):
+        name = _env_name(env_var)
+        if name:
+            return name
+
+    run_dir = _env_name("RUN_DIR")
+    if run_dir:
+        name = _name_from_path(run_dir)
+        if name:
+            return name
+
+    wandb_dir = _env_name("WANDB_DIR")
+    if wandb_dir:
+        name = _name_from_path(wandb_dir)
+        if name:
+            return name
+
+    return WORKSTREAM_NAME
+
+
+WORKSTREAM_NAME = get_workstream_name()
 EXPERIMENT_NAME = get_experiment_name()
 
 # ---------------------------------------------------------------------------
@@ -483,6 +523,7 @@ def init_wandb(config, param_counts, num_flops_per_token, grad_accum_steps, toke
         return None
 
     wandb_config = {
+        "workstream_name": WORKSTREAM_NAME,
         "experiment_name": EXPERIMENT_NAME,
         "model": asdict(config),
         "param_counts": param_counts,
@@ -514,7 +555,7 @@ def init_wandb(config, param_counts, num_flops_per_token, grad_accum_steps, toke
     try:
         os.environ.setdefault("WANDB_API_KEY", wandb_api_key)
         wandb.login(key=wandb_api_key)
-        run = wandb.init(project=EXPERIMENT_NAME, name=EXPERIMENT_NAME, config=wandb_config)
+        run = wandb.init(project=WORKSTREAM_NAME, name=EXPERIMENT_NAME, config=wandb_config)
         wandb.define_metric("step")
         wandb.define_metric("*", step_metric="step")
         return run
