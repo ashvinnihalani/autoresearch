@@ -1,4 +1,4 @@
-# autoresearch
+# nanochat
 
 This workstream lets the LLM do its own research by running experiments. It only requires one GPU per experiment.
 
@@ -119,7 +119,7 @@ num_params_M:     50.3
 depth:            8
 ```
 
-Note that training is configured to stop after 5 minutes, but the benchmark evaluation happens after training and can take substantially longer. During eval, `train.py` prints `benchmark_progress/<phase>` lines and logs matching W&B metrics under `eval/progress/*`. You can extract the key metric from the log file:
+Note that training is configured to stop after 5 minutes, but the benchmark evaluation happens after training and can take substantially longer. During eval, `train.py` prints `benchmark_progress/<phase>` lines. You can extract the key metric from the log file:
 
 ```
 grep "^benchmark_score:" experiments/<tag>/run.log
@@ -127,7 +127,7 @@ grep "^benchmark_score:" experiments/<tag>/run.log
 
 ## Logging results
 
-When an experiment is done, log it to `experiments/<tag>/results.tsv` (tab-separated, NOT comma-separated — commas break in descriptions). Commit `results.tsv` as the durable experiment record. Keep `run.log`, `logs/`, and local W&B cache files under `experiments/<tag>/` but untracked.
+When an experiment is done, log it to `experiments/<tag>/results.tsv` (tab-separated, NOT comma-separated — commas break in descriptions). Commit `results.tsv` as the durable experiment record. Keep `run.log`, `logs/`, and local tracking/cache files under `experiments/<tag>/` but untracked.
 
 The TSV has a header row and 5 columns:
 
@@ -160,11 +160,11 @@ LOOP FOREVER:
 1. Look at the git state: the current branch/commit we're on
 2. Set `RUN_DIR=experiments/<tag>` and make sure `$RUN_DIR/logs` exists.
 3. Tune `train.py` with an experimental idea by directly hacking the code.
-4. Run the experiment: `WANDB_DIR="$RUN_DIR/wandb" uv run train.py > "$RUN_DIR/run.log" 2>&1` (redirect everything — do NOT use tee or let output flood your context)
+4. Run the experiment: `uv run train.py > "$RUN_DIR/run.log" 2>&1` (redirect everything — do NOT use tee or let output flood your context)
 5. Read out the results: `grep "^benchmark_score:\|^peak_vram_mb:" "$RUN_DIR/run.log"`
 6. If the grep output is empty, the run crashed. Run `tail -n 50 "$RUN_DIR/run.log"` to read the Python stack trace and attempt a fix. If you can't get things to work after more than a few attempts, give up.
 7. Save the run log under `$RUN_DIR/logs/` with a short trial name so every result has an audit trail.
-8. Record the results in the tsv and commit `results.tsv` as the durable experiment record. Do not commit run logs or local W&B cache files.
+8. Record the results in the tsv and commit `results.tsv` as the durable experiment record. Do not commit run logs or local tracking/cache files.
 9. Commit only meaningful code states that are worth preserving. Hyperparameter changes do not need a new commit per trial; if a final hyperparameter set is worth keeping, commit the chosen state once.
 10. If `benchmark_score` improved (higher), keep the change or continue from it.
 11. If `benchmark_score` is equal or worse, revert the trial change and continue from the prior best state.

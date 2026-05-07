@@ -26,3 +26,8 @@ dev/
 nanochat/experiments/*/run.log
 nanochat/experiments/*/logs/
 nanochat/experiments/*/wandb/
+async-rl/experiments/*/run.log
+async-rl/experiments/*/logs/
+async-rl/experiments/*/wandb/
+async-rl/experiments/*/ray/
+async-rl/.cache/
