@@ -1,0 +1,12 @@
+.git
+.cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+experiments/*/run.log
+experiments/*/logs/
+experiments/*/wandb/
+experiments/*/ray/

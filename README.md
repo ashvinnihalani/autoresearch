@@ -10,6 +10,12 @@ This repository is organized as a list of folder-level workstreams. Each workstr
 
 Human docs: [nanochat/README.md](nanochat/README.md). Agent program: [nanochat/PROGRAM.md](nanochat/PROGRAM.md).
 
+### async-rl
+
+[async-rl](async-rl/) is an 8-GPU RL workstream for [Qwen/Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) based on slime's [fully asynchronous rollout example](https://github.com/THUDM/slime/tree/main/examples/fully_async). It keeps a persistent async rollout worker running through slime while Megatron consumes completed rollout batches.
+
+Human docs: [async-rl/README.md](async-rl/README.md). Agent program: [async-rl/PROGRAM.md](async-rl/PROGRAM.md).
+
 ## Repository structure
 
 ```text
@@ -22,4 +28,12 @@ nanochat/
   train.py          — model, optimizer, and training loop
   pyproject.toml    — workstream dependencies
   uv.lock           — locked dependency versions
+
+async-rl/
+  Dockerfile             — slime-based 8-GPU RL container
+  README.md              — human-facing setup and context
+  PROGRAM.md             — agent-facing research program
+  prepare.py             — model/data download and checkpoint conversion
+  train.py               — 8-GPU fully async slime launch configuration
+  fully_async_rollout.py — persistent async rollout worker
 ```
