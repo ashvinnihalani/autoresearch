@@ -2,41 +2,42 @@
 
 ## Purpose
 
-This file is for coding agents working in this repository. It defines operating rules, experiment boundaries, and commit expectations.
+This file is for coding agents working in this repository. It defines operating rules, workstream boundaries, and commit expectations.
 
-Do not treat this as user-facing project documentation. The root `README.md` is the public experiment index, and each experiment folder owns its own `README.md` for setup, usage, and experiment-specific context.
+Do not treat this as user-facing project documentation. The root `README.md` is the public workstream index, and each workstream folder owns its own `README.md` for human-facing setup, usage, and context plus its own `PROGRAM.md` for agent-facing research instructions.
 
 ## Documentation Roles
 
 - `AGENTS.md` — agent-facing instructions for how to work in the repo.
-- `README.md` — repo-facing overview and index of available experiment folders.
-- `<experiment>/README.md` — human-facing documentation for one experiment, including setup, commands, design notes, and container usage.
-- `<experiment>/program.md` — research-program instructions used by agents running that experiment.
+- `README.md` — repo-facing overview and index of available workstream folders.
+- `<workstream>/README.md` — human-facing documentation for one workstream, including setup, commands, design notes, and container usage.
+- `<workstream>/PROGRAM.md` — agent-facing research-program instructions used by agents running experiments in that workstream.
 
 ## Repository Layout Rules
 
-This repo is organized as folder-level experiments. The root should stay lightweight: keep the experiment catalog in `README.md`, and keep detailed setup or usage instructions inside each experiment's own `README.md`.
+This repo is organized as folder-level workstreams. The root should stay lightweight: keep the workstream catalog in `README.md`, and keep detailed human-facing setup or usage instructions inside each workstream's own `README.md`.
 
 ## Working Rules
 
-- Make changes inside the relevant experiment folder unless the user asks for a repo-wide change.
-- Keep root-level files focused on repo organization, contributor guidance, and experiment indexing.
-- When adding a new experiment, create a new folder and include an experiment-level `README.md`.
-- Update the root `README.md` whenever experiment folders are added, renamed, or removed.
-- Keep experiment dependencies isolated in that experiment folder.
-- Put experiment-specific Dockerfiles inside the experiment folder, not at the repo root.
+- Make changes inside the relevant workstream folder unless the user asks for a repo-wide change.
+- Keep root-level files focused on repo organization, contributor guidance, and workstream indexing.
+- When adding a new workstream, create a new folder and include a workstream-level `README.md` and `PROGRAM.md`.
+- Update the root `README.md` whenever workstream folders are added, renamed, or removed.
+- Keep workstream dependencies isolated in that workstream folder.
+- Put workstream-specific Dockerfiles inside the workstream folder, not at the repo root.
 
-## Experiment-Specific Rules
+## Workstream-Specific Rules
 
-Avoid duplicating experiment setup, metrics, or usage notes here. Put those details in `<experiment>/README.md` so humans and agents have one canonical place to read them.
+Avoid duplicating workstream setup, metrics, run budgets, or usage notes here. Put human-facing details in `<workstream>/README.md` and agent-facing research instructions in `<workstream>/PROGRAM.md`.
 
-Agent-only constraints that apply while editing an experiment:
+Agent-only constraints that apply while editing or running a workstream:
 
-- Read the experiment-level `README.md` before making changes inside an experiment folder.
-- Follow any file ownership rules described by that experiment.
-- Keep dependency changes scoped to the experiment folder.
-- Keep Docker changes scoped to the experiment folder.
-- Preserve the experiment's documented comparison metric and run budget unless the user explicitly asks to change them.
+- Read the workstream-level `PROGRAM.md` before making changes or running experiments inside a workstream folder.
+- Use the workstream-level `README.md` for human-facing setup and context when needed, but do not treat it as the agent program.
+- Follow any file ownership rules described by that workstream.
+- Keep dependency changes scoped to the workstream folder.
+- Keep Docker changes scoped to the workstream folder.
+- Preserve the workstream's documented comparison metric and experiment run budget unless the user explicitly asks to change them.
 
 ## WandB MCP Server
 
@@ -46,57 +47,57 @@ If the WandB MCP server is unavailable, inaccessible, unauthenticated, or return
 
 ## Docker Dev Containers
 
-Each experiment should have at most one long-running dev container that agents reuse for commands and research runs. The container must be easy for a newly started agent to discover from Docker alone.
+Each workstream should have at most one long-running dev container that agents reuse for commands and research runs. The container must be easy for a newly started agent to discover from Docker alone.
 
 Use this convention:
 
-- Container name: `autoresearch-<experiment>-dev`
-- Image tag: `autoresearch-<experiment>:local`
+- Container name: `autoresearch-<workstream>-dev`
+- Image tag: `autoresearch-<workstream>:local`
 - Working directory inside the container: `/workspace`
-- Bind mount: experiment folder mounted to `/workspace`
+- Bind mount: workstream folder mounted to `/workspace`
 - Instance storage: if `/tmp/instance_storage` exists on the host, mount it at `/tmp/instance_storage` in the container.
 - GPU access: required via `--gpus all`
 - Required labels:
-  - `autoresearch.experiment=<experiment>`
+  - `autoresearch.workstream=<workstream>`
   - `autoresearch.role=dev`
 
-Before executing commands or research related to a specific experiment, check whether its dev container is already running:
+Before executing commands or research related to a specific workstream, check whether its dev container is already running:
 
 ```bash
-docker ps --filter "name=^/autoresearch-<experiment>-dev$" --filter "label=autoresearch.experiment=<experiment>" --filter "label=autoresearch.role=dev"
+docker ps --filter "name=^/autoresearch-<workstream>-dev$" --filter "label=autoresearch.workstream=<workstream>" --filter "label=autoresearch.role=dev"
 ```
 
-If no matching container is running, build the experiment image if needed and start the dev container from inside the experiment folder:
+If no matching container is running, build the workstream image if needed and start the dev container from inside the workstream folder:
 
 ```bash
-docker build -t autoresearch-<experiment>:local .
+docker build -t autoresearch-<workstream>:local .
 INSTANCE_STORAGE_ARGS=()
 if [ -d /tmp/instance_storage ]; then
   INSTANCE_STORAGE_ARGS=(-v /tmp/instance_storage:/tmp/instance_storage)
 fi
 
 docker run -dit \
-  --name autoresearch-<experiment>-dev \
-  --label autoresearch.experiment=<experiment> \
+  --name autoresearch-<workstream>-dev \
+  --label autoresearch.workstream=<workstream> \
   --label autoresearch.role=dev \
   --gpus all \
   -v "$PWD":/workspace \
   "${INSTANCE_STORAGE_ARGS[@]}" \
   -w /workspace \
-  autoresearch-<experiment>:local \
+  autoresearch-<workstream>:local \
   bash
 ```
 
 After starting the container, verify GPU visibility before running experiments:
 
 ```bash
-docker exec autoresearch-<experiment>-dev nvidia-smi
+docker exec autoresearch-<workstream>-dev nvidia-smi
 ```
 
-Run all experiment commands and research runs inside the experiment container, for example:
+Run all experiment commands and research runs inside the workstream container, for example:
 
 ```bash
-docker exec -it autoresearch-<experiment>-dev uv run train.py
+docker exec -it autoresearch-<workstream>-dev uv run train.py
 ```
 
 ## Commit Standard

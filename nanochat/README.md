@@ -4,15 +4,15 @@
 
 *One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of "group meeting". That era is long gone. Research is now entirely the domain of autonomous swarms of AI agents running across compute cluster megastructures in the skies. The agents claim that we are now in the 10,205th generation of the code base, in any case no one could tell if that's right or wrong as the "code" is now a self-modifying binary that has grown beyond human comprehension. This repo is the story of how it all began. -@karpathy, March 2026*.
 
-The idea: give an AI agent a small but real LLM training setup and let it experiment autonomously overnight. It modifies the code, trains for 5 minutes, checks if the result improved, keeps or discards, and repeats. You wake up in the morning to a log of experiments and (hopefully) a better model. The training code here is a simplified single-GPU implementation of [nanochat](https://github.com/karpathy/nanochat). The core idea is that you're not touching any of the Python files like you normally would as a researcher. Instead, you are programming the `program.md` Markdown files that provide context to the AI agents and set up your autonomous research org. The default `program.md` in this experiment is intentionally kept as a bare bones baseline, though it's obvious how one would iterate on it over time to find the "research org code" that achieves the fastest research progress, how you'd add more agents to the mix, etc. A bit more context on this project is here in this [tweet](https://x.com/karpathy/status/2029701092347630069) and [this tweet](https://x.com/karpathy/status/2031135152349524125).
+The idea: give an AI agent a small but real LLM training setup and let it experiment autonomously overnight. It modifies the code, trains for 5 minutes, checks if the result improved, keeps or discards, and repeats. You wake up in the morning to a log of experiments and (hopefully) a better model. The training code here is a simplified single-GPU implementation of [nanochat](https://github.com/karpathy/nanochat). The core idea is that you're not touching any of the Python files like you normally would as a researcher. Instead, you are programming the `PROGRAM.md` Markdown files that provide context to the AI agents and set up your autonomous research org. The default `PROGRAM.md` in this workstream is intentionally kept as a bare bones baseline, though it's obvious how one would iterate on it over time to find the "research org code" that achieves the fastest research progress, how you'd add more agents to the mix, etc. A bit more context on this project is here in this [tweet](https://x.com/karpathy/status/2029701092347630069) and [this tweet](https://x.com/karpathy/status/2031135152349524125).
 
 ## How it works
 
-This experiment is deliberately kept small and only really has three files that matter:
+This workstream is deliberately kept small and only really has three files that matter:
 
 - **`prepare.py`** — fixed constants, one-time data prep (downloads training data, trains a BPE tokenizer), and runtime utilities (dataloader, evaluation). Not modified.
 - **`train.py`** — the single file the agent edits. Contains the full GPT model, optimizer (Muon + AdamW), and training loop. Everything is fair game: architecture, hyperparameters, optimizer, batch size, etc. **This file is edited and iterated on by the agent**.
-- **`program.md`** — baseline instructions for one agent. Point your agent here and let it go. **This file is edited and iterated on by the human**.
+- **`PROGRAM.md`** — baseline instructions for one agent. Point your agent here and let it go. **This file is edited and iterated on by the human**.
 
 By design, training runs for a **fixed 5-minute time budget** (wall clock, excluding startup/compilation), regardless of the details of your compute. The metric is **val_bpb** (validation bits per byte) — lower is better, and vocab-size-independent so architectural changes are fairly compared.
 
@@ -23,7 +23,7 @@ If you are new to neural networks, this ["Dummy's Guide"](https://x.com/hooeem/s
 **Requirements:** A single NVIDIA GPU (tested on H100), Python 3.10+, [mise](https://mise.jdx.dev/).
 
 ```bash
-# 1. Enter the experiment folder
+# 1. Enter the workstream folder
 cd nanochat
 
 # 2. Install uv project manager globally with mise
@@ -42,13 +42,13 @@ export WANDB_API_KEY=...
 uv run train.py
 ```
 
-When `WANDB_API_KEY` is set, `train.py` logs to a W&B project named from the experiment folder.
+When `WANDB_API_KEY` is set, `train.py` logs to a W&B project named from the workstream folder.
 
 If the above commands all work ok, your setup is working and you can go into autonomous research mode.
 
 ## Docker
 
-This experiment includes its own Dockerfile so dependencies are isolated at the experiment folder level.
+This workstream includes its own Dockerfile so dependencies are isolated at the workstream folder level.
 
 ```bash
 cd nanochat
@@ -75,21 +75,24 @@ docker run --rm --gpus all \
 
 ## Running the agent
 
-Spin up your Claude/Codex or whatever you want in this experiment folder (and disable all permissions), then you can prompt something like:
+Spin up your Claude/Codex or whatever you want in this workstream folder (and disable all permissions), then you can prompt something like:
 
 ```text
-Hi have a look at program.md and let's kick off a new experiment! let's do the setup first.
+Hi have a look at PROGRAM.md and let's kick off a new experiment! let's do the setup first.
 ```
 
-The `program.md` file is essentially a super lightweight "skill".
+The `PROGRAM.md` file is essentially a super lightweight "skill".
+
+Run artifacts belong under `experiments/<run-tag>/`. Commit `results.tsv` as the compact experiment record; keep local logs and W&B cache files untracked. Hyperparameter sweeps are not required for this experiment, and hyperparameter-only trials should be recorded there rather than committed one-by-one.
 
 ## Project structure
 
 ```text
-Dockerfile      — isolated container for this experiment
+Dockerfile      — isolated container for this workstream
+experiments/    — per-run results folders (results.tsv, logs, local W&B files)
 prepare.py      — constants, data prep + runtime utilities (do not modify)
 train.py        — model, optimizer, training loop (agent modifies this)
-program.md      — agent instructions
+PROGRAM.md      — agent-facing research program
 pyproject.toml  — dependencies
 uv.lock         — locked dependency versions
 ```
@@ -99,7 +102,7 @@ uv.lock         — locked dependency versions
 - **Single file to modify.** The agent only touches `train.py`. This keeps the scope manageable and diffs reviewable.
 - **Fixed time budget.** Training always runs for exactly 5 minutes, regardless of your specific platform. This means you can expect approx 12 experiments/hour and approx 100 experiments while you sleep. There are two upsides of this design decision. First, this makes experiments directly comparable regardless of what the agent changes (model size, batch size, architecture, etc). Second, this means that autoresearch will find the most optimal model for your platform in that time budget. The downside is that your runs (and results) become not comparable to other people running on other compute platforms.
 - **Self-contained.** No external dependencies beyond PyTorch and a few small packages. No distributed training, no complex configs. One GPU, one file, one metric.
-- **Folder-level isolation.** The Dockerfile, lockfile, and project metadata live inside this experiment folder so future experiments can carry different dependencies without affecting this one.
+- **Folder-level isolation.** The Dockerfile, lockfile, and project metadata live inside this workstream folder so future workstreams can carry different dependencies without affecting this one.
 
 ## Platform support
 
