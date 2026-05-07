@@ -1,0 +1,26 @@
+commit	val_bpb	memory_gb	status	description
+8ec6cea	0.996377	44.0	keep	baseline from existing run.log
+4f5596e	0.987306	43.9	keep	halve total batch size to 2**18
+1f5689a	0.986644	43.9	keep	lower Muon matrix LR to 0.03 with smaller batch
+03fcf7c	0.986542	43.9	keep	lower Muon matrix LR to 0.025
+6ccdd6c	0.986990	43.9	discard	lower Muon matrix LR to 0.02
+920a422	0.987280	43.9	discard	lower embedding LR to 0.5
+ce64e74	0.986455	43.9	keep	raise embedding LR to 0.7
+3802c83	0.986435	43.9	keep	raise embedding LR to 0.8
+b5aa801	0.986545	43.9	discard	raise embedding LR to 0.9
+7d0fed5	0.986214	43.9	keep	raise unembedding LR to 0.006
+13234ae	0.986562	43.9	discard	raise unembedding LR to 0.008
+0df4d23	0.986581	43.9	discard	raise unembedding LR to 0.007
+77ac22b	0.986887	43.9	discard	lower Muon weight decay to 0.1
+afb79bb	0.986903	43.9	discard	raise Muon weight decay to 0.3
+3aa675c	0.985895	43.9	keep	increase LR warmdown ratio to 0.6
+4e26769	0.985798	43.9	keep	increase LR warmdown ratio to 0.7
+d705d08	0.986362	43.9	discard	increase LR warmdown ratio to 0.8
+9ea5d50	0.986160	43.9	discard	increase LR warmdown ratio to 0.75
+61088ee	0.986020	43.9	discard	increase LR warmdown ratio to 0.65
+5988b2a	0.987742	43.9	discard	add 2 percent LR warmup
+3a3eba9	0.985806	43.9	discard	set final LR fraction to 0.05
+62edd32	0.985518	43.9	keep	set final LR fraction to 0.02
+9536366	0.985736	43.9	discard	set final LR fraction to 0.01
+b12573a	0.985795	43.9	discard	set final LR fraction to 0.03
+a81e88f	0.990316	39.1	discard	reduce model depth to 7
