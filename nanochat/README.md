@@ -49,7 +49,7 @@ For a faster smoke run of the benchmark harness, set a per-task limit:
 NANOCHAT_BENCHMARK_LIMIT=8 uv run train.py
 ```
 
-When `WANDB_API_KEY` is set, `train.py` logs training metrics, benchmark progress, and eval benchmark results to a W&B project named from the workstream folder.
+When `WANDB_API_KEY` is set, `train.py` logs training metrics, benchmark progress, and eval benchmark results to a W&B project named from the workstream folder. The W&B run name comes from the experiment tag when `RUN_TAG`, `RUN_DIR`, or `WANDB_DIR=experiments/<run-tag>/wandb` is set.
 
 If the above commands all work ok, your setup is working and you can go into autonomous research mode.
 

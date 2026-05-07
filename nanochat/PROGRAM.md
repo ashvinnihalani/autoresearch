@@ -1,6 +1,6 @@
 # autoresearch
 
-This workstream lets the LLM do its own research by running experiments.
+This workstream lets the LLM do its own research by running experiments. It only requires one GPU per experiment.
 
 ## Setup
 

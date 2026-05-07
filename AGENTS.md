@@ -47,57 +47,84 @@ If the WandB MCP server is unavailable, inaccessible, unauthenticated, or return
 
 ## Docker Dev Containers
 
-Each workstream should have at most one long-running dev container that agents reuse for commands and research runs. The container must be easy for a newly started agent to discover from Docker alone.
+Each workstream experiment should have at most one long-running dev container that agents reuse for commands and research runs. The container must be easy for a newly started agent to discover from Docker alone.
 
 Use this convention:
 
-- Container name: `autoresearch-<workstream>-dev`
-- Image tag: `autoresearch-<workstream>:local`
+- Container name: `autoresearch-<workstream>-<experiment>`
+- Image tag: `autoresearch-<workstream>-<experiment>:local`
 - Working directory inside the container: `/workspace`
 - Bind mount: workstream folder mounted to `/workspace`
 - Instance storage: if `/tmp/instance_storage` exists on the host, mount it at `/tmp/instance_storage` in the container.
-- GPU access: required via `--gpus all`
+- GPU access: required with explicit device IDs, for example `--gpus "device=0"` or `--gpus "device=0,1"`. Do not use `--gpus all` unless the workstream explicitly requires all GPUs.
 - Required labels:
   - `autoresearch.workstream=<workstream>`
+  - `autoresearch.experiment=<experiment>`
   - `autoresearch.role=dev`
 
-Before executing commands or research related to a specific workstream, check whether its dev container is already running:
+Before executing commands or research related to a specific workstream experiment, first check whether its dev container is already running. Reuse it if it exists; only start a new container when this check returns no matching running container:
 
 ```bash
-docker ps --filter "name=^/autoresearch-<workstream>-dev$" --filter "label=autoresearch.workstream=<workstream>" --filter "label=autoresearch.role=dev"
+WORKSTREAM=<workstream>
+EXPERIMENT=<experiment>
+CONTAINER_NAME="autoresearch-${WORKSTREAM}-${EXPERIMENT}"
+IMAGE_TAG="autoresearch-${WORKSTREAM}-${EXPERIMENT}:local"
+
+docker ps \
+  --filter "name=^/${CONTAINER_NAME}$" \
+  --filter "label=autoresearch.workstream=${WORKSTREAM}" \
+  --filter "label=autoresearch.experiment=${EXPERIMENT}" \
+  --filter "label=autoresearch.role=dev"
 ```
 
-If no matching container is running, build the workstream image if needed and start the dev container from inside the workstream folder:
+Before starting a new container, inspect running Docker containers to see which GPUs have already been reserved. If the required GPUs are already reserved, notify the user and ask which experiments to kill instead of choosing conflicting device IDs. Treat containers with `Count:-1` or empty `DeviceIDs` as reserving all GPUs.
 
 ```bash
-docker build -t autoresearch-<workstream>:local .
+RUNNING_CONTAINERS=$(docker ps -q)
+if [ -n "$RUNNING_CONTAINERS" ]; then
+  docker inspect --format '{{.Name}} {{json .HostConfig.DeviceRequests}}' $RUNNING_CONTAINERS
+fi
+nvidia-smi --query-gpu=index,name,memory.used --format=csv
+```
+
+If no matching container is running, build the workstream/experiment image if needed and start the dev container from inside the workstream folder:
+
+```bash
+WORKSTREAM=<workstream>
+EXPERIMENT=<experiment>
+CONTAINER_NAME="autoresearch-${WORKSTREAM}-${EXPERIMENT}"
+IMAGE_TAG="autoresearch-${WORKSTREAM}-${EXPERIMENT}:local"
+
+docker build -t "$IMAGE_TAG" .
+GPU_DEVICE_IDS=0
 INSTANCE_STORAGE_ARGS=()
 if [ -d /tmp/instance_storage ]; then
   INSTANCE_STORAGE_ARGS=(-v /tmp/instance_storage:/tmp/instance_storage)
 fi
 
 docker run -dit \
-  --name autoresearch-<workstream>-dev \
-  --label autoresearch.workstream=<workstream> \
+  --name "$CONTAINER_NAME" \
+  --label "autoresearch.workstream=${WORKSTREAM}" \
+  --label "autoresearch.experiment=${EXPERIMENT}" \
   --label autoresearch.role=dev \
-  --gpus all \
+  --gpus "device=${GPU_DEVICE_IDS}" \
   -v "$PWD":/workspace \
   "${INSTANCE_STORAGE_ARGS[@]}" \
   -w /workspace \
-  autoresearch-<workstream>:local \
+  "$IMAGE_TAG" \
   bash
 ```
 
 After starting the container, verify GPU visibility before running experiments:
 
 ```bash
-docker exec autoresearch-<workstream>-dev nvidia-smi
+docker exec "$CONTAINER_NAME" nvidia-smi
 ```
 
-Run all experiment commands and research runs inside the workstream container, for example:
+Run all experiment commands and research runs inside the workstream/experiment container, for example:
 
 ```bash
-docker exec -it autoresearch-<workstream>-dev uv run train.py
+docker exec -it "$CONTAINER_NAME" uv run train.py
 ```
 
 ## Commit Standard
