@@ -1,10 +1,10 @@
 # autoresearch
 
-This is an experiment to have the LLM do its own research.
+This workstream lets the LLM do its own research by running experiments.
 
 ## Setup
 
-To set up a new experiment, work with the user to:
+To set up a new experiment run, work with the user to:
 
 1. **Agree on a run tag**: propose a tag based on today's date (e.g. `mar5`). The branch `autoresearch/<tag>` must not already exist — this is a fresh run.
 2. **Create the branch**: `git checkout -b autoresearch/<tag>` from current master.
@@ -13,7 +13,7 @@ To set up a new experiment, work with the user to:
    - `prepare.py` — fixed constants, data prep, tokenizer, dataloader, evaluation. Do not modify.
    - `train.py` — the file you modify. Model architecture, optimizer, training loop.
 4. **Verify data exists**: Check that `~/.cache/autoresearch/` contains data shards and a tokenizer. If not, tell the human to run `uv run prepare.py`.
-5. **Initialize results.tsv**: Create `results.tsv` with just the header row. The baseline will be recorded after the first run.
+5. **Initialize the run results folder**: Create `experiments/<tag>/` and `experiments/<tag>/logs/`. Create `experiments/<tag>/results.tsv` with just the header row. The baseline will be recorded after the first run. Store all run outputs for this experiment under this folder.
 6. **Confirm and go**: Confirm setup looks good.
 
 Once you get confirmation, kick off the experimentation.
@@ -24,6 +24,7 @@ Each experiment runs on a single GPU. The training script runs for a **fixed tim
 
 **What you CAN do:**
 - Modify `train.py` — this is the only file you edit. Everything is fair game: model architecture, optimizer, hyperparameters, training loop, batch size, model size, etc.
+- Run focused hyperparameter trials when useful, but hyperparameter sweeps are not needed. Hyperparameter-only trials do not need new commits; record them in the run results folder instead.
 
 **What you CANNOT do:**
 - Modify `prepare.py`. It is read-only. It contains the fixed evaluation, data loading, tokenizer, and training constants (time budget, sequence length, etc).
@@ -58,12 +59,12 @@ depth:            8
 Note that the script is configured to always stop after 5 minutes, so depending on the computing platform of this computer the numbers might look different. You can extract the key metric from the log file:
 
 ```
-grep "^val_bpb:" run.log
+grep "^val_bpb:" experiments/<tag>/run.log
 ```
 
 ## Logging results
 
-When an experiment is done, log it to `results.tsv` (tab-separated, NOT comma-separated — commas break in descriptions).
+When an experiment is done, log it to `experiments/<tag>/results.tsv` (tab-separated, NOT comma-separated — commas break in descriptions). Commit `results.tsv` as the durable experiment record. Keep `run.log`, `logs/`, and local W&B cache files under `experiments/<tag>/` but untracked.
 
 The TSV has a header row and 5 columns:
 
@@ -71,7 +72,7 @@ The TSV has a header row and 5 columns:
 commit	val_bpb	memory_gb	status	description
 ```
 
-1. git commit hash (short, 7 chars)
+1. git commit hash (short, 7 chars) for the code state under test. Hyperparameter-only trials do not need a new commit; record the current base commit and include the changed hyperparameters in the description.
 2. val_bpb achieved (e.g. 1.234567) — use 0.000000 for crashes
 3. peak memory in GB, round to .1f (e.g. 12.3 — divide peak_vram_mb by 1024) — use 0.0 for crashes
 4. status: `keep`, `discard`, or `crash`
@@ -94,14 +95,16 @@ The experiment runs on a dedicated branch (e.g. `autoresearch/mar5` or `autorese
 LOOP FOREVER:
 
 1. Look at the git state: the current branch/commit we're on
-2. Tune `train.py` with an experimental idea by directly hacking the code.
-3. git commit
-4. Run the experiment: `uv run train.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context)
-5. Read out the results: `grep "^val_bpb:\|^peak_vram_mb:" run.log`
-6. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` to read the Python stack trace and attempt a fix. If you can't get things to work after more than a few attempts, give up.
-7. Record the results in the tsv (NOTE: do not commit the results.tsv file, leave it untracked by git)
-8. If val_bpb improved (lower), you "advance" the branch, keeping the git commit
-9. If val_bpb is equal or worse, you git reset back to where you started
+2. Set `RUN_DIR=experiments/<tag>` and make sure `$RUN_DIR/logs` exists.
+3. Tune `train.py` with an experimental idea by directly hacking the code.
+4. Run the experiment: `WANDB_DIR="$RUN_DIR/wandb" uv run train.py > "$RUN_DIR/run.log" 2>&1` (redirect everything — do NOT use tee or let output flood your context)
+5. Read out the results: `grep "^val_bpb:\|^peak_vram_mb:" "$RUN_DIR/run.log"`
+6. If the grep output is empty, the run crashed. Run `tail -n 50 "$RUN_DIR/run.log"` to read the Python stack trace and attempt a fix. If you can't get things to work after more than a few attempts, give up.
+7. Save the run log under `$RUN_DIR/logs/` with a short trial name so every result has an audit trail.
+8. Record the results in the tsv and commit `results.tsv` as the durable experiment record. Do not commit run logs or local W&B cache files.
+9. Commit only meaningful code states that are worth preserving. Hyperparameter changes do not need a new commit per trial; if a final hyperparameter set is worth keeping, commit the chosen state once.
+10. If val_bpb improved (lower), keep the change or continue from it.
+11. If val_bpb is equal or worse, revert the trial change and continue from the prior best state.
 
 The idea is that you are a completely autonomous researcher trying things out. If they work, keep. If they don't, discard. And you're advancing the branch so that you can iterate. If you feel like you're getting stuck in some way, you can rewind but you should probably do this very very sparingly (if ever).
 

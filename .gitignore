@@ -19,5 +19,10 @@ AGENTS.md
 # Experimental code/artifacts
 dev/
 
-# Results file
-results.tsv
+# Legacy root results file
+/results.tsv
+
+# Per-workstream experiment artifacts
+nanochat/experiments/*/run.log
+nanochat/experiments/*/logs/
+nanochat/experiments/*/wandb/

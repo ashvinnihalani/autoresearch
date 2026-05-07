@@ -1,6 +1,6 @@
 FROM nvidia/cuda:12.8.1-devel-ubuntu22.04
 
-LABEL autoresearch.experiment="nanochat" \
+LABEL autoresearch.workstream="nanochat" \
       autoresearch.role="dev"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
