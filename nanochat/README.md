@@ -8,13 +8,14 @@ The idea: give an AI agent a small but real LLM training setup and let it experi
 
 ## How it works
 
-This workstream is deliberately kept small and only really has three files that matter:
+This workstream is deliberately kept small and only really has four files that matter:
 
 - **`prepare.py`** — fixed constants, one-time data prep (downloads training data, trains a BPE tokenizer), and runtime utilities (dataloader, evaluation). Not modified.
 - **`train.py`** — the single file the agent edits. Contains the full GPT model, optimizer (Muon + AdamW), and training loop. Everything is fair game: architecture, hyperparameters, optimizer, batch size, etc. **This file is edited and iterated on by the agent**.
+- **`eval_suite.py`** — EleutherAI lm-evaluation-harness adapter and the primary benchmark suite/score definition.
 - **`PROGRAM.md`** — baseline instructions for one agent. Point your agent here and let it go. **This file is edited and iterated on by the human**.
 
-By design, training runs for a **fixed 5-minute time budget** (wall clock, excluding startup/compilation), regardless of the details of your compute. The metric is **val_bpb** (validation bits per byte) — lower is better, and vocab-size-independent so architectural changes are fairly compared.
+By design, training runs for a **fixed 5-minute time budget** (wall clock, excluding startup/compilation), regardless of the details of your compute. After training, `train.py` runs the benchmark suite in `eval_suite.py` and reports **`benchmark_score`** — higher is better. The default scorecard includes MMLU, MMLU STEM/non-STEM splits, GSM8k, MATH_6k, BBH, IFEval-nile, HumanEval, HellaSwag, ARC-Challenge, WinoGrande, TruthfulQA, LAMBADA, and WikiText-2. Legacy `val_bpb` can still be computed as a diagnostic with `NANOCHAT_EVAL_BPB=1`, but it is no longer the comparison metric.
 
 If you are new to neural networks, this ["Dummy's Guide"](https://x.com/hooeem/status/2030720614752039185) looks pretty good for a lot more context.
 
@@ -38,11 +39,17 @@ uv run prepare.py
 # 5. Enable W&B logging by exporting your host key (optional)
 export WANDB_API_KEY=...
 
-# 6. Manually run a single training experiment (~5 min)
+# 6. Manually run a single training experiment plus benchmark eval
 uv run train.py
 ```
 
-When `WANDB_API_KEY` is set, `train.py` logs to a W&B project named from the workstream folder.
+For a faster smoke run of the benchmark harness, set a per-task limit:
+
+```bash
+NANOCHAT_BENCHMARK_LIMIT=8 uv run train.py
+```
+
+When `WANDB_API_KEY` is set, `train.py` logs training metrics, benchmark progress, and eval benchmark results to a W&B project named from the workstream folder.
 
 If the above commands all work ok, your setup is working and you can go into autonomous research mode.
 
@@ -92,6 +99,7 @@ Dockerfile      — isolated container for this workstream
 experiments/    — per-run results folders (results.tsv, logs, local W&B files)
 prepare.py      — constants, data prep + runtime utilities (do not modify)
 train.py        — model, optimizer, training loop (agent modifies this)
+eval_suite.py   — benchmark harness adapter and primary score definition
 PROGRAM.md      — agent-facing research program
 pyproject.toml  — dependencies
 uv.lock         — locked dependency versions
@@ -100,8 +108,9 @@ uv.lock         — locked dependency versions
 ## Design choices
 
 - **Single file to modify.** The agent only touches `train.py`. This keeps the scope manageable and diffs reviewable.
-- **Fixed time budget.** Training always runs for exactly 5 minutes, regardless of your specific platform. This means you can expect approx 12 experiments/hour and approx 100 experiments while you sleep. There are two upsides of this design decision. First, this makes experiments directly comparable regardless of what the agent changes (model size, batch size, architecture, etc). Second, this means that autoresearch will find the most optimal model for your platform in that time budget. The downside is that your runs (and results) become not comparable to other people running on other compute platforms.
-- **Self-contained.** No external dependencies beyond PyTorch and a few small packages. No distributed training, no complex configs. One GPU, one file, one metric.
+- **Fixed training budget.** Training always runs for exactly 5 minutes, regardless of your specific platform. Benchmark evaluation runs after training, so total wall time depends on the selected benchmark suite and any `NANOCHAT_BENCHMARK_LIMIT`. Generation-heavy full-suite evals can run much longer than training; W&B progress metrics are emitted under `eval/progress/*`.
+- **Benchmark-first metric.** The primary comparison metric is `benchmark_score`, a macro-average over the configured lm-evaluation-harness tasks. WikiText-2 bits-per-byte is converted to a higher-is-better score with `1 / (1 + bits_per_byte)`.
+- **Self-contained training.** Training remains a single-GPU setup. Benchmark evaluation uses `lm-eval` plus Hugging Face datasets and HumanEval's unsafe-code path, so run the full suite inside the experiment container.
 - **Folder-level isolation.** The Dockerfile, lockfile, and project metadata live inside this workstream folder so future workstreams can carry different dependencies without affecting this one.
 
 ## Platform support
