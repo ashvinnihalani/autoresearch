@@ -6,7 +6,7 @@ This repository is organized as a list of folder-level workstreams. Each workstr
 
 ### nanochat
 
-[nanochat](nanochat/) is a simplified single-GPU LLM training workstream based on [nanochat](https://github.com/karpathy/nanochat). It gives an AI agent a compact training setup, lets the agent iterate on `train.py`, and compares experiments with a benchmark score after a fixed 5-minute training budget.
+[nanochat](nanochat/) is a simplified single-GPU LLM training workstream based on [nanochat](https://github.com/karpathy/nanochat). It gives an AI agent a compact training setup, lets the agent iterate on `train.py`, and compares normal runs with validation BPB after a fixed 5-minute training budget. Heavier benchmark evaluation is available for direction-level checks.
 
 Human docs: [nanochat/README.md](nanochat/README.md). Agent program: [nanochat/PROGRAM.md](nanochat/PROGRAM.md).
 

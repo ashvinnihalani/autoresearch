@@ -1,60 +1,60 @@
-commit	val_bpb	memory_gb	status	description
-8ec6cea	0.996088	44.0	keep	baseline
-12e0ada	1.020916	44.0	discard	train-loop sequence curriculum 512 then 1024 then 2048 at 40pct and 75pct
-728f1f4	0.994233	44.0	keep	token-preserving sequence curriculum 512 then 1024 then 2048 at 40pct and 75pct
-8775e1a	0.994129	44.0	keep	token-preserving sequence curriculum 512 then 1024 then 2048 at 30pct and 65pct
-cd7066a	0.993990	44.0	keep	token-preserving sequence curriculum 512 then 1024 then 2048 at 20pct and 55pct
-5572c94	0.994076	44.0	discard	token-preserving sequence curriculum 512 then 1024 then 2048 at 10pct and 45pct
-977d2e6	0.993866	44.0	keep	token-preserving sequence curriculum 512 then 1024 then 2048 at 15pct and 55pct
-9eef578	0.993875	44.0	discard	token-preserving sequence curriculum 512 then 1024 then 2048 at 15pct and 60pct
-88c3511	0.994992	44.0	discard	token-preserving sequence curriculum 1024 then 2048 at 55pct
-b3e6232	0.994127	44.0	discard	token-preserving sequence curriculum 256 then 512 then 1024 then 2048 at 5pct 15pct and 55pct
-8d4ab86	0.987382	43.9	keep	token-preserving sequence curriculum 15pct and 55pct with total batch size 2^18
-c0b8050	0.992389	22.2	discard	token-preserving sequence curriculum 15pct and 55pct with total batch size 2^17 and device batch size 64
-dc62c2f	0.986888	43.9	keep	token-preserving sequence curriculum 15pct and 55pct with total batch size 2^18 and lower lrs 0.5 0.0035 0.035
-0170ebb	0.986733	43.9	keep	token-preserving sequence curriculum 15pct and 55pct with total batch size 2^18 and lower lrs 0.45 0.003 0.03
-4d07c49	0.985419	43.9	keep	add rope base frequency 50000 on current best
-8cdf10e	0.985010	43.9	keep	raise rope base frequency to 100000
-0440148	0.985408	43.9	discard	raise rope base frequency to 200000
-19a39cc	0.984564	43.9	keep	increase warmdown ratio to 0.7 on current best
-e79525d	0.986663	43.9	discard	add 5pct warmup on current best
-e8cc53f	0.983198	60.2	keep	depth 9 aspect ratio 57 on current best
-a52d113	0.982848	60.2	keep	use SSSSL window pattern on current best
-d1275ff	0.984472	60.2	discard	raise embedding lr to 0.8 on depth window stack
-3388c09	0.982641	60.2	keep	raise unembedding lr to 0.006 on depth window stack
-8089ebc	0.982464	60.2	keep	raise unembedding lr to 0.008 on depth window stack
-a27bb69	0.981305	60.2	keep	raise unembedding lr to 0.010 on depth window stack
-d1323b1	0.981474	60.2	discard	raise unembedding lr to 0.012 on depth window stack
-0459007	0.979763	60.2	keep	lower x0 lambda init to 0.05 on unembedding lr 0.010
-fdddc46	0.979163	60.2	keep	lower x0 lambda init to 0.025 on unembedding lr 0.010
-d94902f	0.979921	60.2	discard	zero x0 lambda init on unembedding lr 0.010
-deb1c71	0.980050	60.2	discard	lower x0 lambda init to 0.0125 on unembedding lr 0.010
-6277df9	0.978028	60.2	keep	use quarter-context short attention windows
-2359777	0.977228	60.2	keep	use eighth-context short attention windows
-3d8d115	0.976746	60.2	keep	use sixteenth-context short attention windows
-f9dd3b5	0.977091	60.2	discard	use thirty-second-context short attention windows
-916467d	0.976786	60.2	discard	change random seed from 42 to 137
-675a530	0.976846	60.2	discard	raise unembedding lr to 0.011 after short-window stack
-ffc6738	0.976968	60.2	discard	raise warmdown ratio to 0.8 after short-window stack
-9a39e3e	0.976879	60.2	discard	raise warmdown ratio to 0.75 after short-window stack
-457d25d	0.976416	60.2	keep	set final lr fraction to 0.01
-dc414c0	0.976444	60.2	discard	set final lr fraction to 0.02
-bf7a1d8	0.976641	60.2	discard	set final lr fraction to 0.005
-0552245	0.976398	60.2	keep	set final lr fraction to 0.015
-a74c31a	0.976587	60.2	discard	set final lr fraction to 0.0125
-418b0bf	0.976442	60.2	discard	set final lr fraction to 0.0175
-005d094	0.977765	60.2	discard	raise x0 lambda init to 0.03 after lr floor tuning
-b73ee8c	0.976213	60.2	keep	lower x0 lambda init to 0.02 after lr floor tuning
-ebc3a63	0.976140	60.2	keep	lower x0 lambda init to 0.0175 after lr floor tuning
-fcd703c	0.978045	60.2	discard	lower x0 lambda init to 0.015 after lr floor tuning
-4e2ebf1	0.976297	60.2	discard	raise x0 lambda init to 0.01875 after lower bracket
-842091b	0.976064	60.2	keep	use twentieth-context short attention windows after x0 tuning
-7034a19	0.976596	60.2	discard	use twenty-fourth-context short attention windows after x0 tuning
-d9e09b0	0.976201	60.2	discard	use eighteenth-context short attention windows after x0 tuning
-400379f	0.976090	60.2	discard	use nineteenth-context short attention windows after x0 tuning
-e94fa5e	0.976012	60.2	keep	raise final lr fraction to 0.0175 after x0 and window tuning
-dd20111	0.976262	60.2	discard	raise final lr fraction to 0.02 after x0 and window tuning
-bb5ed69	0.976440	60.2	discard	lower final lr fraction to 0.01625 after x0 and window tuning
-ba162cc	0.976434	60.2	discard	lower warmdown ratio to 0.65 after schedule retuning
-b22cc50	0.977243	66.2	discard	increase depth to 10 after schedule retuning
-03340a5	0.976376	60.2	discard	disable sequence length curriculum on tuned stack
+commit	val_bpb	benchmark_score	memory_gb	status	description
+8ec6cea	0.996088	N/A	44.0	keep	baseline
+12e0ada	1.020916	N/A	44.0	discard	train-loop sequence curriculum 512 then 1024 then 2048 at 40pct and 75pct
+728f1f4	0.994233	N/A	44.0	keep	token-preserving sequence curriculum 512 then 1024 then 2048 at 40pct and 75pct
+8775e1a	0.994129	N/A	44.0	keep	token-preserving sequence curriculum 512 then 1024 then 2048 at 30pct and 65pct
+cd7066a	0.993990	N/A	44.0	keep	token-preserving sequence curriculum 512 then 1024 then 2048 at 20pct and 55pct
+5572c94	0.994076	N/A	44.0	discard	token-preserving sequence curriculum 512 then 1024 then 2048 at 10pct and 45pct
+977d2e6	0.993866	N/A	44.0	keep	token-preserving sequence curriculum 512 then 1024 then 2048 at 15pct and 55pct
+9eef578	0.993875	N/A	44.0	discard	token-preserving sequence curriculum 512 then 1024 then 2048 at 15pct and 60pct
+88c3511	0.994992	N/A	44.0	discard	token-preserving sequence curriculum 1024 then 2048 at 55pct
+b3e6232	0.994127	N/A	44.0	discard	token-preserving sequence curriculum 256 then 512 then 1024 then 2048 at 5pct 15pct and 55pct
+8d4ab86	0.987382	N/A	43.9	keep	token-preserving sequence curriculum 15pct and 55pct with total batch size 2^18
+c0b8050	0.992389	N/A	22.2	discard	token-preserving sequence curriculum 15pct and 55pct with total batch size 2^17 and device batch size 64
+dc62c2f	0.986888	N/A	43.9	keep	token-preserving sequence curriculum 15pct and 55pct with total batch size 2^18 and lower lrs 0.5 0.0035 0.035
+0170ebb	0.986733	N/A	43.9	keep	token-preserving sequence curriculum 15pct and 55pct with total batch size 2^18 and lower lrs 0.45 0.003 0.03
+4d07c49	0.985419	N/A	43.9	keep	add rope base frequency 50000 on current best
+8cdf10e	0.985010	N/A	43.9	keep	raise rope base frequency to 100000
+0440148	0.985408	N/A	43.9	discard	raise rope base frequency to 200000
+19a39cc	0.984564	N/A	43.9	keep	increase warmdown ratio to 0.7 on current best
+e79525d	0.986663	N/A	43.9	discard	add 5pct warmup on current best
+e8cc53f	0.983198	N/A	60.2	keep	depth 9 aspect ratio 57 on current best
+a52d113	0.982848	N/A	60.2	keep	use SSSSL window pattern on current best
+d1275ff	0.984472	N/A	60.2	discard	raise embedding lr to 0.8 on depth window stack
+3388c09	0.982641	N/A	60.2	keep	raise unembedding lr to 0.006 on depth window stack
+8089ebc	0.982464	N/A	60.2	keep	raise unembedding lr to 0.008 on depth window stack
+a27bb69	0.981305	N/A	60.2	keep	raise unembedding lr to 0.010 on depth window stack
+d1323b1	0.981474	N/A	60.2	discard	raise unembedding lr to 0.012 on depth window stack
+0459007	0.979763	N/A	60.2	keep	lower x0 lambda init to 0.05 on unembedding lr 0.010
+fdddc46	0.979163	N/A	60.2	keep	lower x0 lambda init to 0.025 on unembedding lr 0.010
+d94902f	0.979921	N/A	60.2	discard	zero x0 lambda init on unembedding lr 0.010
+deb1c71	0.980050	N/A	60.2	discard	lower x0 lambda init to 0.0125 on unembedding lr 0.010
+6277df9	0.978028	N/A	60.2	keep	use quarter-context short attention windows
+2359777	0.977228	N/A	60.2	keep	use eighth-context short attention windows
+3d8d115	0.976746	N/A	60.2	keep	use sixteenth-context short attention windows
+f9dd3b5	0.977091	N/A	60.2	discard	use thirty-second-context short attention windows
+916467d	0.976786	N/A	60.2	discard	change random seed from 42 to 137
+675a530	0.976846	N/A	60.2	discard	raise unembedding lr to 0.011 after short-window stack
+ffc6738	0.976968	N/A	60.2	discard	raise warmdown ratio to 0.8 after short-window stack
+9a39e3e	0.976879	N/A	60.2	discard	raise warmdown ratio to 0.75 after short-window stack
+457d25d	0.976416	N/A	60.2	keep	set final lr fraction to 0.01
+dc414c0	0.976444	N/A	60.2	discard	set final lr fraction to 0.02
+bf7a1d8	0.976641	N/A	60.2	discard	set final lr fraction to 0.005
+0552245	0.976398	N/A	60.2	keep	set final lr fraction to 0.015
+a74c31a	0.976587	N/A	60.2	discard	set final lr fraction to 0.0125
+418b0bf	0.976442	N/A	60.2	discard	set final lr fraction to 0.0175
+005d094	0.977765	N/A	60.2	discard	raise x0 lambda init to 0.03 after lr floor tuning
+b73ee8c	0.976213	N/A	60.2	keep	lower x0 lambda init to 0.02 after lr floor tuning
+ebc3a63	0.976140	N/A	60.2	keep	lower x0 lambda init to 0.0175 after lr floor tuning
+fcd703c	0.978045	N/A	60.2	discard	lower x0 lambda init to 0.015 after lr floor tuning
+4e2ebf1	0.976297	N/A	60.2	discard	raise x0 lambda init to 0.01875 after lower bracket
+842091b	0.976064	N/A	60.2	keep	use twentieth-context short attention windows after x0 tuning
+7034a19	0.976596	N/A	60.2	discard	use twenty-fourth-context short attention windows after x0 tuning
+d9e09b0	0.976201	N/A	60.2	discard	use eighteenth-context short attention windows after x0 tuning
+400379f	0.976090	N/A	60.2	discard	use nineteenth-context short attention windows after x0 tuning
+e94fa5e	0.976012	N/A	60.2	keep	raise final lr fraction to 0.0175 after x0 and window tuning
+dd20111	0.976262	N/A	60.2	discard	raise final lr fraction to 0.02 after x0 and window tuning
+bb5ed69	0.976440	N/A	60.2	discard	lower final lr fraction to 0.01625 after x0 and window tuning
+ba162cc	0.976434	N/A	60.2	discard	lower warmdown ratio to 0.65 after schedule retuning
+b22cc50	0.977243	N/A	66.2	discard	increase depth to 10 after schedule retuning
+03340a5	0.976376	N/A	60.2	discard	disable sequence length curriculum on tuned stack
