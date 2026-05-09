@@ -77,7 +77,7 @@ docker ps \
   --filter "label=autoresearch.role=dev"
 ```
 
-Before starting a new container, inspect running Docker containers to see which GPUs have already been reserved. If the required GPUs are already reserved, notify the user and ask which experiments to kill instead of choosing conflicting device IDs. Treat containers with `Count:-1` or empty `DeviceIDs` as reserving all GPUs.
+Only perform the GPU inventory check after the reuse check returns no matching running container and immediately before starting a new container. At that point, inspect running Docker containers to see which GPUs have already been reserved. If the required GPUs are already reserved, notify the user and ask which experiments to kill instead of choosing conflicting device IDs. Treat containers with `Count:-1` or empty `DeviceIDs` as reserving all GPUs.
 
 ```bash
 RUNNING_CONTAINERS=$(docker ps -q)
@@ -87,7 +87,7 @@ fi
 nvidia-smi --query-gpu=index,name,memory.used --format=csv
 ```
 
-If no matching container is running, build the workstream/experiment image if needed and start the dev container from inside the workstream folder:
+If no matching container is running, build the workstream/experiment image if needed, run the GPU inventory check immediately before `docker run`, and start the dev container from inside the workstream folder:
 
 ```bash
 WORKSTREAM=<workstream>
