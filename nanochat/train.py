@@ -90,6 +90,16 @@ def get_experiment_name():
 WORKSTREAM_NAME = get_workstream_name()
 EXPERIMENT_NAME = get_experiment_name()
 
+
+def env_flag(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
+RUN_BENCHMARK = env_flag("NANOCHAT_RUN_BENCHMARK")
+
 # ---------------------------------------------------------------------------
 # GPT Model
 # ---------------------------------------------------------------------------
@@ -550,7 +560,8 @@ def init_wandb(config, param_counts, num_flops_per_token, grad_accum_steps, toke
         "vocab_size": vocab_size,
         "max_seq_len": MAX_SEQ_LEN,
         "eval_tokens": EVAL_TOKENS,
-        "primary_metric": "eval/benchmark_score",
+        "primary_metric": "eval/val_bpb",
+        "benchmark_enabled": RUN_BENCHMARK,
         "benchmark_limit": os.environ.get("NANOCHAT_BENCHMARK_LIMIT", "full"),
         "benchmark_names": os.environ.get("NANOCHAT_BENCHMARKS", "default"),
         "time_budget_seconds": TIME_BUDGET,
@@ -817,42 +828,45 @@ print()  # newline after \r training log
 
 total_tokens = step * TOTAL_BATCH_SIZE
 
-# Benchmark eval
 model.eval()
-from eval_suite import evaluate_benchmark_suite, sanitize_metric_name
 
+# Cheap default eval for run-to-run comparisons.
+print("Running validation BPB evaluation...")
+with autocast_ctx:
+    val_bpb = evaluate_bpb(model, tokenizer, DEVICE_BATCH_SIZE)
 
-def benchmark_progress_callback(phase: str, completed: int, total: int) -> None:
-    phase_name = sanitize_metric_name(phase)
-    print(f"benchmark_progress/{phase_name}: {completed}/{total}", flush=True)
-    wandb_log(
-        wandb_run,
-        {
-            f"eval/progress/{phase_name}_completed": completed,
-            f"eval/progress/{phase_name}_total": total,
-            f"eval/progress/{phase_name}_fraction": completed / total if total else 0.0,
-        },
-        step,
+benchmark_report = None
+benchmark_score = None
+if RUN_BENCHMARK:
+    from eval_suite import evaluate_benchmark_suite, sanitize_metric_name
+
+    def benchmark_progress_callback(phase: str, completed: int, total: int) -> None:
+        phase_name = sanitize_metric_name(phase)
+        print(f"benchmark_progress/{phase_name}: {completed}/{total}", flush=True)
+        wandb_log(
+            wandb_run,
+            {
+                f"eval/progress/{phase_name}_completed": completed,
+                f"eval/progress/{phase_name}_total": total,
+                f"eval/progress/{phase_name}_fraction": completed / total if total else 0.0,
+            },
+            step,
+        )
+
+    print("Running benchmark evaluation...")
+    benchmark_report = evaluate_benchmark_suite(
+        model,
+        tokenizer,
+        device=device,
+        max_length=MAX_SEQ_LEN,
+        autocast_ctx=autocast_ctx,
+        progress_callback=benchmark_progress_callback,
     )
-
-
-print("Running benchmark evaluation...")
-benchmark_report = evaluate_benchmark_suite(
-    model,
-    tokenizer,
-    device=device,
-    max_length=MAX_SEQ_LEN,
-    autocast_ctx=autocast_ctx,
-    progress_callback=benchmark_progress_callback,
-)
-benchmark_score = benchmark_report["benchmark_score"]
-if not benchmark_report["task_scores"]:
-    raise RuntimeError("Benchmark evaluation produced no task scores.")
-
-val_bpb = None
-if os.environ.get("NANOCHAT_EVAL_BPB", "0") == "1":
-    with autocast_ctx:
-        val_bpb = evaluate_bpb(model, tokenizer, DEVICE_BATCH_SIZE)
+    benchmark_score = benchmark_report["benchmark_score"]
+    if not benchmark_report["task_scores"]:
+        raise RuntimeError("Benchmark evaluation produced no task scores.")
+else:
+    print("Skipping benchmark evaluation. Set NANOCHAT_RUN_BENCHMARK=1 to run it.")
 
 # Run summary
 t_end = time.time()
@@ -861,8 +875,9 @@ steady_state_mfu = 100 * steady_state_flops / total_training_time / H100_BF16_PE
 peak_vram_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
 
 eval_metrics = {
-    "benchmark_score": benchmark_score,
-    "benchmark_task_count": len(benchmark_report["task_scores"]),
+    "val_bpb": val_bpb,
+    "benchmark_enabled": int(RUN_BENCHMARK),
+    "benchmark_task_count": 0,
     "startup_seconds": startup_time,
     "training_seconds": total_training_time,
     "total_seconds": t_end - t_start,
@@ -875,15 +890,16 @@ eval_metrics = {
     "num_params_M": num_params / 1e6,
     "depth": DEPTH,
 }
-if val_bpb is not None:
-    eval_metrics["val_bpb"] = val_bpb
-for label, score in benchmark_report["task_scores"].items():
-    eval_metrics[f"benchmark/{sanitize_metric_name(label)}"] = score
-for label, metrics in benchmark_report["task_metrics"].items():
-    label_name = sanitize_metric_name(label)
-    for metric_name, value in metrics.items():
-        if isinstance(value, (int, float)):
-            eval_metrics[f"benchmark_raw/{label_name}/{sanitize_metric_name(metric_name)}"] = value
+if benchmark_report is not None:
+    eval_metrics["benchmark_score"] = benchmark_score
+    eval_metrics["benchmark_task_count"] = len(benchmark_report["task_scores"])
+    for label, score in benchmark_report["task_scores"].items():
+        eval_metrics[f"benchmark/{sanitize_metric_name(label)}"] = score
+    for label, metrics in benchmark_report["task_metrics"].items():
+        label_name = sanitize_metric_name(label)
+        for metric_name, value in metrics.items():
+            if isinstance(value, (int, float)):
+                eval_metrics[f"benchmark_raw/{label_name}/{sanitize_metric_name(metric_name)}"] = value
 wandb_metrics = {f"eval/{key}": value for key, value in eval_metrics.items()}
 wandb_log(wandb_run, wandb_metrics, step)
 if wandb_run is not None:
@@ -891,11 +907,13 @@ if wandb_run is not None:
     wandb_run.finish()
 
 print("---")
-print(f"benchmark_score:  {benchmark_score:.6f}")
-for label, score in benchmark_report["task_scores"].items():
-    print(f"benchmark/{sanitize_metric_name(label)}: {score:.6f}")
-if val_bpb is not None:
-    print(f"val_bpb:          {val_bpb:.6f}")
+print(f"val_bpb:          {val_bpb:.6f}")
+if benchmark_report is not None:
+    print(f"benchmark_score:  {benchmark_score:.6f}")
+    for label, score in benchmark_report["task_scores"].items():
+        print(f"benchmark/{sanitize_metric_name(label)}: {score:.6f}")
+else:
+    print("benchmark_score:  N/A")
 print(f"training_seconds: {total_training_time:.1f}")
 print(f"total_seconds:    {t_end - t_start:.1f}")
 print(f"peak_vram_mb:     {peak_vram_mb:.1f}")

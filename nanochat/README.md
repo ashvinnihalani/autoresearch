@@ -12,10 +12,10 @@ This workstream is deliberately kept small and only really has four files that m
 
 - **`prepare.py`** — fixed constants, one-time data prep (downloads training data, trains a BPE tokenizer), and runtime utilities (dataloader, evaluation). Not modified.
 - **`train.py`** — the single file the agent edits. Contains the full GPT model, optimizer (Muon + AdamW), and training loop. Everything is fair game: architecture, hyperparameters, optimizer, batch size, etc. **This file is edited and iterated on by the agent**.
-- **`eval_suite.py`** — EleutherAI lm-evaluation-harness adapter and the primary benchmark suite/score definition.
+- **`eval_suite.py`** — EleutherAI lm-evaluation-harness adapter used for optional benchmark direction checks.
 - **`PROGRAM.md`** — baseline instructions for one agent. Point your agent here and let it go. **This file is edited and iterated on by the human**.
 
-By design, training runs for a **fixed 5-minute time budget** (wall clock, excluding startup/compilation), regardless of the details of your compute. After training, `train.py` runs the benchmark suite in `eval_suite.py` and reports **`benchmark_score`** — higher is better. The default scorecard includes MMLU, MMLU STEM/non-STEM splits, GSM8k, MATH_6k, BBH, IFEval-nile, HumanEval, HellaSwag, ARC-Challenge, WinoGrande, TruthfulQA, LAMBADA, and WikiText-2. Legacy `val_bpb` can still be computed as a diagnostic with `NANOCHAT_EVAL_BPB=1`, but it is no longer the comparison metric.
+By design, training runs for a **fixed 5-minute time budget** (wall clock, excluding startup/compilation), regardless of the details of your compute. After training, `train.py` reports **`val_bpb`** — lower is better — as the cheap run-to-run comparison metric. The heavier benchmark suite in `eval_suite.py` is available for direction changes or promising checkpoints with `NANOCHAT_RUN_BENCHMARK=1`. The default scorecard includes MMLU, MMLU STEM/non-STEM splits, GSM8k, MATH_6k, BBH, IFEval-nile, HumanEval, HellaSwag, ARC-Challenge, WinoGrande, TruthfulQA, LAMBADA, and WikiText-2.
 
 If you are new to neural networks, this ["Dummy's Guide"](https://x.com/hooeem/status/2030720614752039185) looks pretty good for a lot more context.
 
@@ -39,17 +39,23 @@ uv run prepare.py
 # 5. Enable W&B logging by exporting your host key (optional)
 export WANDB_API_KEY=...
 
-# 6. Manually run a single training experiment plus benchmark eval
+# 6. Manually run a single training experiment plus validation BPB eval
 uv run train.py
+```
+
+To run the benchmark suite for a direction check, opt in explicitly:
+
+```bash
+NANOCHAT_RUN_BENCHMARK=1 uv run train.py
 ```
 
 For a faster smoke run of the benchmark harness, set a per-task limit:
 
 ```bash
-NANOCHAT_BENCHMARK_LIMIT=8 uv run train.py
+NANOCHAT_RUN_BENCHMARK=1 NANOCHAT_BENCHMARK_LIMIT=8 uv run train.py
 ```
 
-When `WANDB_API_KEY` is set, `train.py` logs training metrics, benchmark progress, and eval benchmark results to a W&B project named from the workstream folder. The W&B run name comes from the experiment tag when `RUN_TAG`, `RUN_DIR`, or `WANDB_DIR=experiments/<run-tag>/wandb` is set.
+When `WANDB_API_KEY` is set, `train.py` logs training metrics, `val_bpb`, and optional benchmark progress/results to a W&B project named from the workstream folder. The W&B run name comes from the experiment tag when `RUN_TAG`, `RUN_DIR`, or `WANDB_DIR=experiments/<run-tag>/wandb` is set.
 
 If the above commands all work ok, your setup is working and you can go into autonomous research mode.
 
@@ -90,7 +96,7 @@ Hi have a look at PROGRAM.md and let's kick off a new experiment! let's do the s
 
 The `PROGRAM.md` file is essentially a super lightweight "skill".
 
-Run artifacts belong under `experiments/<run-tag>/`. Commit `results.tsv` as the compact experiment record; keep local logs and W&B cache files untracked. Hyperparameter sweeps are not required for this experiment, and hyperparameter-only trials should be recorded there rather than committed one-by-one.
+Run artifacts belong under `experiments/<run-tag>/`. Commit `results.tsv` as the compact experiment record with both `val_bpb` and `benchmark_score` columns, using `N/A` for benchmark score when the suite was skipped. At the end of an autonomous experiment session, run one final full benchmark eval with `NANOCHAT_RUN_BENCHMARK=1` and no `NANOCHAT_BENCHMARK_LIMIT` so the final row has a numeric benchmark score. Keep local logs and W&B cache files untracked. Hyperparameter sweeps are not required for this experiment, and hyperparameter-only trials should be recorded there rather than committed one-by-one.
 
 ## Project structure
 
@@ -108,8 +114,8 @@ uv.lock         — locked dependency versions
 ## Design choices
 
 - **Single file to modify.** The agent only touches `train.py`. This keeps the scope manageable and diffs reviewable.
-- **Fixed training budget.** Training always runs for exactly 5 minutes, regardless of your specific platform. Benchmark evaluation runs after training, so total wall time depends on the selected benchmark suite and any `NANOCHAT_BENCHMARK_LIMIT`. Generation-heavy full-suite evals can run much longer than training; W&B progress metrics are emitted under `eval/progress/*`.
-- **Benchmark-first metric.** The primary comparison metric is `benchmark_score`, a macro-average over the configured lm-evaluation-harness tasks. WikiText-2 bits-per-byte is converted to a higher-is-better score with `1 / (1 + bits_per_byte)`.
+- **Fixed training budget.** Training always runs for exactly 5 minutes, regardless of your specific platform. Validation BPB runs after training for normal iterations. Optional benchmark evaluation runs after that when `NANOCHAT_RUN_BENCHMARK=1`, so total wall time depends on the selected benchmark suite and any `NANOCHAT_BENCHMARK_LIMIT`. Generation-heavy full-suite evals can run much longer than training; W&B progress metrics are emitted under `eval/progress/*`.
+- **BPB-first iteration.** The primary run-to-run comparison metric is `val_bpb`, with lower being better. The optional `benchmark_score` is a macro-average over the configured lm-evaluation-harness tasks, used for direction-level checks. WikiText-2 bits-per-byte is converted to a higher-is-better score with `1 / (1 + bits_per_byte)`.
 - **Self-contained training.** Training remains a single-GPU setup. Benchmark evaluation uses `lm-eval` plus Hugging Face datasets and HumanEval's unsafe-code path, so run the full suite inside the experiment container.
 - **Folder-level isolation.** The Dockerfile, lockfile, and project metadata live inside this workstream folder so future workstreams can carry different dependencies without affecting this one.
 
