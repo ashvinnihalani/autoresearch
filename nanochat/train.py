@@ -103,6 +103,7 @@ class GPTConfig:
     n_kv_head: int = 6
     n_embd: int = 768
     window_pattern: str = "SSSL"
+    rope_base: int = 50000
 
 
 def norm(x):
@@ -228,7 +229,7 @@ class GPT(nn.Module):
             torch.nn.init.zeros_(block.mlp.c_proj.weight)
         # Per-layer scalars
         self.resid_lambdas.fill_(1.0)
-        self.x0_lambdas.fill_(0.1)
+        self.x0_lambdas.fill_(0.0175)
         # Value embeddings
         for ve in self.value_embeds.values():
             torch.nn.init.uniform_(ve.weight, -s, s)
@@ -238,7 +239,7 @@ class GPT(nn.Module):
                 torch.nn.init.zeros_(block.attn.ve_gate.weight)
         # Rotary embeddings
         head_dim = self.config.n_embd // self.config.n_head
-        cos, sin = self._precompute_rotary_embeddings(self.rotary_seq_len, head_dim)
+        cos, sin = self._precompute_rotary_embeddings(self.rotary_seq_len, head_dim, base=self.config.rope_base)
         self.cos, self.sin = cos, sin
         # Cast embeddings to bf16
         self.transformer.wte.to(dtype=torch.bfloat16)
@@ -261,7 +262,7 @@ class GPT(nn.Module):
         pattern = config.window_pattern.upper()
         assert all(c in "SL" for c in pattern)
         long_window = config.sequence_len
-        short_window = long_window // 2
+        short_window = long_window // 20
         char_to_window = {"L": (long_window, 0), "S": (short_window, 0)}
         window_sizes = []
         for layer_idx in range(config.n_layer):
@@ -270,7 +271,7 @@ class GPT(nn.Module):
         window_sizes[-1] = (long_window, 0)
         return window_sizes
 
-    def estimate_flops(self):
+    def estimate_flops(self, sequence_len=None):
         """Estimated FLOPs per token (forward + backward)."""
         nparams = sum(p.numel() for p in self.parameters())
         value_embeds_numel = sum(ve.weight.numel() for ve in self.value_embeds.values())
@@ -278,7 +279,7 @@ class GPT(nn.Module):
                           self.resid_lambdas.numel() + self.x0_lambdas.numel())
         h = self.config.n_head
         q = self.config.n_embd // self.config.n_head
-        t = self.config.sequence_len
+        t = self.config.sequence_len if sequence_len is None else sequence_len
         attn_flops = 0
         for window_size in self.window_sizes:
             window = window_size[0]
@@ -494,37 +495,56 @@ class MuonAdamW(torch.optim.Optimizer):
 # Hyperparameters (edit these directly, no CLI flags needed)
 # ---------------------------------------------------------------------------
 
+SEED = 42                # random seed for model init and data order
+
 # Model architecture
-ASPECT_RATIO = 64       # model_dim = depth * ASPECT_RATIO
+ASPECT_RATIO = 57       # model_dim = depth * ASPECT_RATIO
 HEAD_DIM = 128          # target head dimension for attention
-WINDOW_PATTERN = "SSSL" # sliding window pattern: L=full, S=half context
+WINDOW_PATTERN = "SSSSL" # sliding window pattern: L=full, S=short context
+ROPE_BASE = 100000      # RoPE base frequency
 
 # Optimization
 TOTAL_BATCH_SIZE = 2**18 # ~262K tokens per optimizer step
-EMBEDDING_LR = 0.8      # learning rate for token embeddings (Adam)
-UNEMBEDDING_LR = 0.006  # learning rate for lm_head (Adam)
-MATRIX_LR = 0.025       # learning rate for matrix parameters (Muon)
+EMBEDDING_LR = 0.45     # learning rate for token embeddings (Adam)
+UNEMBEDDING_LR = 0.010  # learning rate for lm_head (Adam)
+MATRIX_LR = 0.03        # learning rate for matrix parameters (Muon)
 SCALAR_LR = 0.5         # learning rate for per-layer scalars (Adam)
 WEIGHT_DECAY = 0.2      # cautious weight decay for Muon
 ADAM_BETAS = (0.8, 0.95) # Adam beta1, beta2
 WARMUP_RATIO = 0.0      # fraction of time budget for LR warmup
 WARMDOWN_RATIO = 0.7    # fraction of time budget for LR warmdown
-FINAL_LR_FRAC = 0.02    # final LR as fraction of initial
+FINAL_LR_FRAC = 0.0175  # final LR as fraction of initial
 
 # Model size
-DEPTH = 8               # number of transformer layers
+DEPTH = 9               # number of transformer layers
 DEVICE_BATCH_SIZE = 128  # per-device batch size (reduce if OOM)
+
+# Sequence-length curriculum in train.py only. Short stages reshape each
+# full 2048-token row into independent shorter subsequences, preserving tokens.
+SEQUENCE_CURRICULUM = (
+    (0.00, 512),
+    (0.15, 1024),
+    (0.55, MAX_SEQ_LEN),
+)
 
 
 def init_wandb(config, param_counts, num_flops_per_token, grad_accum_steps, tokens_per_fwdbwd, vocab_size):
     wandb_api_key = os.environ.get("WANDB_API_KEY")
+    require_wandb = os.environ.get("REQUIRE_WANDB") == "1"
     if not wandb_api_key:
-        print("WANDB_API_KEY not set; W&B logging disabled.")
+        msg = "WANDB_API_KEY not set; W&B logging disabled."
+        if require_wandb:
+            raise RuntimeError(msg)
+        print(msg)
         return None
 
+    git_commit = os.environ.get("GIT_COMMIT", "")
+    run_name = os.environ.get("WANDB_RUN_NAME") or (f"{EXPERIMENT_NAME}-{git_commit}" if git_commit else EXPERIMENT_NAME)
     wandb_config = {
         "workstream_name": WORKSTREAM_NAME,
         "experiment_name": EXPERIMENT_NAME,
+        "git_commit": git_commit or None,
+        "seed": SEED,
         "model": asdict(config),
         "param_counts": param_counts,
         "vocab_size": vocab_size,
@@ -547,6 +567,7 @@ def init_wandb(config, param_counts, num_flops_per_token, grad_accum_steps, toke
         "warmup_ratio": WARMUP_RATIO,
         "warmdown_ratio": WARMDOWN_RATIO,
         "final_lr_frac": FINAL_LR_FRAC,
+        "sequence_curriculum": list(SEQUENCE_CURRICULUM),
         "num_flops_per_token": num_flops_per_token,
         "h100_bf16_peak_flops": H100_BF16_PEAK_FLOPS,
         "torch_version": torch.__version__,
@@ -555,11 +576,13 @@ def init_wandb(config, param_counts, num_flops_per_token, grad_accum_steps, toke
     try:
         os.environ.setdefault("WANDB_API_KEY", wandb_api_key)
         wandb.login(key=wandb_api_key)
-        run = wandb.init(project=WORKSTREAM_NAME, name=EXPERIMENT_NAME, config=wandb_config)
+        run = wandb.init(project=WORKSTREAM_NAME, name=run_name, config=wandb_config)
         wandb.define_metric("step")
         wandb.define_metric("*", step_metric="step")
         return run
     except Exception as exc:
+        if require_wandb:
+            raise RuntimeError(f"WandB init failed with REQUIRE_WANDB=1: {exc}") from exc
         print(f"WandB init failed; continuing without WandB: {exc}")
         return None
 
@@ -584,8 +607,8 @@ def wandb_log(run, metrics, step):
 # ---------------------------------------------------------------------------
 
 t_start = time.time()
-torch.manual_seed(42)
-torch.cuda.manual_seed(42)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
 torch.set_float32_matmul_precision("high")
 device = torch.device("cuda")
 autocast_ctx = torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
@@ -603,6 +626,7 @@ def build_model_config(depth):
         sequence_len=MAX_SEQ_LEN, vocab_size=vocab_size,
         n_layer=depth, n_head=num_heads, n_kv_head=num_heads, n_embd=model_dim,
         window_pattern=WINDOW_PATTERN,
+        rope_base=ROPE_BASE,
     )
 
 config = build_model_config(DEPTH)
@@ -619,6 +643,8 @@ for key, value in param_counts.items():
     print(f"  {key:24s}: {value:,}")
 num_params = param_counts['total']
 num_flops_per_token = model.estimate_flops()
+curriculum_seq_lens = sorted({seq_len for _, seq_len in SEQUENCE_CURRICULUM})
+num_flops_per_token_by_seq_len = {seq_len: model.estimate_flops(seq_len) for seq_len in curriculum_seq_lens}
 print(f"Estimated FLOPs per token: {num_flops_per_token:e}")
 
 tokens_per_fwdbwd = DEVICE_BATCH_SIZE * MAX_SEQ_LEN
@@ -641,6 +667,7 @@ x, y, epoch = next(train_loader)  # prefetch first batch
 
 print(f"Time budget: {TIME_BUDGET}s")
 print(f"Gradient accumulation steps: {grad_accum_steps}")
+print(f"Sequence curriculum: {SEQUENCE_CURRICULUM}")
 
 wandb_run = init_wandb(config, param_counts, num_flops_per_token, grad_accum_steps,
                        tokens_per_fwdbwd, vocab_size)
@@ -663,6 +690,31 @@ def get_muon_momentum(step):
 def get_weight_decay(progress):
     return WEIGHT_DECAY * (1 - progress)
 
+def get_sequence_len(progress):
+    seq_len = SEQUENCE_CURRICULUM[0][1]
+    for start, length in SEQUENCE_CURRICULUM:
+        if progress >= start:
+            seq_len = length
+        else:
+            break
+    return seq_len
+
+def reshape_batch_for_seq_len(x, y, seq_len):
+    if seq_len == x.size(1):
+        return x, y
+    assert x.size(1) % seq_len == 0
+    segments = x.size(1) // seq_len
+    return x.view(x.size(0) * segments, seq_len), y.view(y.size(0) * segments, seq_len)
+
+print("Compiling curriculum sequence lengths...")
+for seq_len in curriculum_seq_lens:
+    x_compile, y_compile = reshape_batch_for_seq_len(x, y, seq_len)
+    with autocast_ctx:
+        loss = model(x_compile, y_compile)
+    loss.backward()
+    model.zero_grad(set_to_none=True)
+torch.cuda.synchronize()
+
 # ---------------------------------------------------------------------------
 # Training loop
 # ---------------------------------------------------------------------------
@@ -670,21 +722,25 @@ def get_weight_decay(progress):
 t_start_training = time.time()
 smooth_train_loss = 0
 total_training_time = 0
+steady_state_flops = 0.0
 step = 0
 
 while True:
+    progress = min(total_training_time / TIME_BUDGET, 1.0)
+    seq_len = get_sequence_len(progress)
+    flops_per_token = num_flops_per_token_by_seq_len[seq_len]
     torch.cuda.synchronize()
     t0 = time.time()
     for micro_step in range(grad_accum_steps):
+        x_active, y_active = reshape_batch_for_seq_len(x, y, seq_len)
         with autocast_ctx:
-            loss = model(x, y)
+            loss = model(x_active, y_active)
         train_loss = loss.detach()
         loss = loss / grad_accum_steps
         loss.backward()
         x, y, epoch = next(train_loader)
 
     # Progress and schedules
-    progress = min(total_training_time / TIME_BUDGET, 1.0)
     lrm = get_lr_multiplier(progress)
     muon_momentum = get_muon_momentum(step)
     muon_weight_decay = get_weight_decay(progress)
@@ -712,6 +768,7 @@ while True:
 
     if step > 10:
         total_training_time += dt
+        steady_state_flops += flops_per_token * TOTAL_BATCH_SIZE
 
     # Logging
     ema_beta = 0.9
@@ -719,13 +776,14 @@ while True:
     debiased_smooth_loss = smooth_train_loss / (1 - ema_beta**(step + 1))
     pct_done = 100 * progress
     tok_per_sec = int(TOTAL_BATCH_SIZE / dt)
-    mfu = 100 * num_flops_per_token * TOTAL_BATCH_SIZE / dt / H100_BF16_PEAK_FLOPS
+    mfu = 100 * flops_per_token * TOTAL_BATCH_SIZE / dt / H100_BF16_PEAK_FLOPS
     remaining = max(0, TIME_BUDGET - total_training_time)
 
-    print(f"\rstep {step:05d} ({pct_done:.1f}%) | loss: {debiased_smooth_loss:.6f} | lrm: {lrm:.2f} | dt: {dt*1000:.0f}ms | tok/sec: {tok_per_sec:,} | mfu: {mfu:.1f}% | epoch: {epoch} | remaining: {remaining:.0f}s    ", end="", flush=True)
+    print(f"\rstep {step:05d} ({pct_done:.1f}%) | T: {seq_len} | loss: {debiased_smooth_loss:.6f} | lrm: {lrm:.2f} | dt: {dt*1000:.0f}ms | tok/sec: {tok_per_sec:,} | mfu: {mfu:.1f}% | epoch: {epoch} | remaining: {remaining:.0f}s    ", end="", flush=True)
     wandb_log(wandb_run, {
         "train/loss": debiased_smooth_loss,
         "train/loss_raw": train_loss_f,
+        "train/sequence_len": seq_len,
         "train/lr_multiplier": lrm,
         "train/muon_momentum": muon_momentum,
         "train/muon_weight_decay": muon_weight_decay,
@@ -799,7 +857,7 @@ if os.environ.get("NANOCHAT_EVAL_BPB", "0") == "1":
 # Run summary
 t_end = time.time()
 startup_time = t_start_training - t_start
-steady_state_mfu = 100 * num_flops_per_token * TOTAL_BATCH_SIZE * (step - 10) / total_training_time / H100_BF16_PEAK_FLOPS if total_training_time > 0 else 0
+steady_state_mfu = 100 * steady_state_flops / total_training_time / H100_BF16_PEAK_FLOPS if total_training_time > 0 else 0
 peak_vram_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
 
 eval_metrics = {
